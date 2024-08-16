@@ -82,7 +82,7 @@ class ApiHandler(object):
         query = urlencode(kwargs) #fit provided params to url query 
         return "{}{}?{}".format(urls.BASE,call,query) #build into acceptable api call and return 
 
-    def fetch_heroes(self,**kwargs):
+    def fetchHeroes(self,**kwargs):
         '''
         Structure API call to fetch heroes
         
@@ -94,12 +94,43 @@ class ApiHandler(object):
         '''
         return self.__buildReq(urls.GET_HEROES,language=self.language,**kwargs) #build url and return it
         
-        
+    def fetchMatchHistoryBySeqNum(self,**kwargs):
+        ''' 
+        Structure API call to fetch match history by sequence number
 
+        params---
+        Any acceptable key word args
+        API route specific args: start_at_match_seq_num: int
+                                  matches_requested: int: amount of games to fetch
+        returns---
+        encoded call: url
+        '''
+        return self.__buildReq(urls.GET_MATCH_HISTORY_BY_SEQ_NUM,language=self.language,**kwargs)
 
+    def fetchItems(self,**kwargs):
+        '''***ENDPOINT DOWN***
+        structure API call to fetch all items (to localize ids)
+        params---
+        Any acceptable key word args
+
+        returns---
+        encoded call:url
+        '''
+        return self.__buildReq(urls.GET_GAME_ITEMS,language=self.language,**kwargs)
 
 run = ApiHandler()
-url = run.fetch_heroes()
-res = run.sendRequest(url)
-dump_df = pd.DataFrame.from_dict(res, orient='index')
-dump_df.to_csv('dump.csv')
+url = run.fetchHeroes()
+#url = run.fetchMatchHistoryBySeqNum(matches_requested=1)
+#url=run.fetchItems()
+#res = run.sendRequest(url)
+#f=open('dumpHeroes.json','w')
+#f.write(json.dumps(res,ensure_ascii=False))
+#f.close()
+#dump_df = pd.DataFrame.from_dict(res.json(), orient='index')
+#dump_df.to_csv('dump3heroes.csv')
+#print(dump_df.keys())
+
+'''stratz api headers
+"Authorization": "Bearer {API TOKEN}"
+"Content-Type": "application/json"
+'''
