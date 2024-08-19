@@ -1,7 +1,8 @@
 from pymongo import MongoClient, errors
-
+#retry library
+from tenacity import retry,stop_after_attempt, wait_exponential, retry_if_exception_type
 class dbHandler(object):
-    def __init__(self,conStr, dbName,collectionName):
+    def __init__(self,conStr,logging=None):
         '''params---
             conStr: mongodb connection string/uri: str 
             dbName: name of db to connect to: str
@@ -10,28 +11,54 @@ class dbHandler(object):
             attr- client db and collection to be assigned once connection established
             '''
         self.conStr=conStr
-        self.dbName=dbName 
-        self.collectionName=collectionName
+        self.dbName=None
+        self.collectionName=None
         self.client=None 
         self.db=None
         self.collection=None 
-    
-    def connect(self):
-        '''create connection to mongodb server, assigns client db and collection of dbHandler class'''
+        if(logging):
+            import logging
+            logging.basicConfig(level=logging.NOTSET)
+            self.logger=logging.getLogger(__name__)
+        else:
+            self.logger=None
+    @retry(
+        stop=stop_after_attempt(3), #retry limit
+        wait=wait_exponential(multiplier=1,min=4,max=10), #delay before retries
+        retry = retry_if_exception_type(errors.ConnectionError, errors.ServerSelectionTimeoutError,errors.PyMongoError)
+    )
+    def connect(self, dbName=None, collectionName=None, id=None):
+        '''create connection to mongodb server, assigns client db and collection of dbHandler class
+        params---
+        id: str: name of field to be used if unique index required
+        dbName: str: name of db
+        collectionName:str name of collection to use
+        '''
         try:
-
+            
             self.client=MongoClient(self.conStr)
+            if(dbName is not None):
+                self.dbName=dbName 
             self.db=self.client[self.dbName]
+            if(collectionName is not None):
+                self.collectionName=collectionName
             self.collection=self.db[self.collectionName]
-
+            if(id is not None):
+                self.collection.create_index(id,unique=True)
             print('connection established')
+            if(self.logger):
+                self.logger.info('DB connection established: db={} col={}'.format(self.collectionName,self.dbName))
         except errors.ConnectionError as con_err:
             print('Connection Error: {}'.format(con_err))
         except errors.ServerSelectionTimeoutError as time_err:
             print('Timeout Error: {}'.format(time_err))
         except errors.PyMongoError as err:
             print('Error: {}'.format(err))
-
+    @retry(
+        stop=stop_after_attempt(3), #retry limit
+        wait=wait_exponential(multiplier=1,min=4,max=10), #delay before retries
+        retry = retry_if_exception_type(errors.ConnectionError, errors.ServerSelectionTimeoutError)
+    )
     def insertData(self,data,many):
         '''add single data entry to collection
         params-- 
@@ -52,6 +79,11 @@ class dbHandler(object):
                 print('error occured while inserting data: {}'.format(err))
         else:
             print('Collection not found')
+    @retry(
+        stop=stop_after_attempt(3), #retry limit
+        wait=wait_exponential(multiplier=1,min=4,max=10), #delay before retries
+        retry = retry_if_exception_type(errors.ConnectionError, errors.ServerSelectionTimeoutError)
+    )        
     def deleteData(self,query,many):
         '''runs query to delete data from connected db
         params---
@@ -70,6 +102,12 @@ class dbHandler(object):
                 print('Error occured: {}'.format(err))
         else:
             print('connect to db first')
+
+    @retry(
+        stop=stop_after_attempt(3), #retry limit
+        wait=wait_exponential(multiplier=1,min=4,max=10), #delay before retries
+        retry = retry_if_exception_type(errors.ConnectionError, errors.ServerSelectionTimeoutError)
+    )
     def searchData(self, query=None):
         ''' runs a query using pymongo find method
         params---

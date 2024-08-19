@@ -5,21 +5,25 @@ import csv
 import json
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path 
-
-
+import logging
 import numpy as np 
 import pandas as pd 
 import requests
 from urllib.parse import urlencode
 import urls
+
+#retry library
+from tenacity import retry,stop_after_attempt, wait_exponential, retry_if_exception_type
 #load environment to access API key 
 load_dotenv(".env")
-#os.getenv("DOTA2_API_KEY") -> to access 
+
 class ApiHandler(object):
-    def __init__(self,api_key=None,language=None,request_exec=None):
+    def __init__(self,api_key=None,language=None,request_exec=None,logging=None):
         '''params---
             api_key = steam web api key ->required to be provided or exist in environment variable 
             language = localization to call in steamapi 
+            request_exec: what to use to send requests: default python requests
+            logging: enable logs
         ''' 
         request_exec=requests.get
         if(api_key):
@@ -32,7 +36,18 @@ class ApiHandler(object):
         else:
             self.language='en_us'
         self.__format="json"
-
+        if(logging):
+            import logging
+            logging.basicConfig(level=logging.NOTSET)
+            self.logger=logging.getLogger(__name__)
+        else:
+            self.logger=None
+    
+    @retry(
+        stop=stop_after_attempt(3), #retry limit
+        wait=wait_exponential(multiplier=1,min=4,max=10), #delay before retries
+        retry = retry_if_exception_type(requests.exceptions.ConnectionError, requests.exceptions.Timeout)
+    )
     def sendRequest(self,call):
         '''
         Return json response from get request
@@ -46,6 +61,8 @@ class ApiHandler(object):
         try:
             response  = requests.get(call)            
             response.raise_for_status()
+            if(self.logger):
+                self.logger.info('Request sent:{} Response code {}'.format(call,response.status_code))
             return response.json()
         
         except requests.exceptions.HTTPError as http_err:
@@ -92,7 +109,10 @@ class ApiHandler(object):
         returns---
         encoded call: url 
         '''
-        return self.__buildReq(urls.GET_HEROES,language=self.language,**kwargs) #build url and return it
+        url = self.__buildReq(urls.GET_HEROES,language=self.language,**kwargs) #build url 
+        if(self.logger):
+            self.logger.info('URL built: {}'.format(url))
+        return url  
         
     def fetchMatchHistoryBySeqNum(self,**kwargs):
         ''' 
@@ -105,7 +125,10 @@ class ApiHandler(object):
         returns---
         encoded call: url
         '''
-        return self.__buildReq(urls.GET_MATCH_HISTORY_BY_SEQ_NUM,language=self.language,**kwargs)
+        url=self.__buildReq(urls.GET_MATCH_HISTORY_BY_SEQ_NUM,language=self.language,**kwargs)
+        if(self.logger):
+            self.logger.info('URL built: {}'.format(url))
+        return url
 
     def fetchItems(self,**kwargs):
         '''***ENDPOINT DOWN***
@@ -117,20 +140,21 @@ class ApiHandler(object):
         encoded call:url
         '''
         return self.__buildReq(urls.GET_GAME_ITEMS,language=self.language,**kwargs)
+    
+    def fetchPublicMatches(self,**kwargs):
+        '''OpenDota public matches call
+        kwargs allowed---
+        less_than_match_id: int : fetch matches with id lower than matches
+        min_rank: int 10-85: set min rank for matches: herald 10-15 g 20-25 etc till 85 
+        max_rank: int 10-85: max rank for matches
+        mmr_ascending: int: order by avg rank
+        mmr_descending: int: order by avg rank 
+        returns---
+        endcoded call: url
 
-run = ApiHandler()
-url = run.fetchHeroes()
-#url = run.fetchMatchHistoryBySeqNum(matches_requested=1)
-#url=run.fetchItems()
-#res = run.sendRequest(url)
-#f=open('dumpHeroes.json','w')
-#f.write(json.dumps(res,ensure_ascii=False))
-#f.close()
-#dump_df = pd.DataFrame.from_dict(res.json(), orient='index')
-#dump_df.to_csv('dump3heroes.csv')
-#print(dump_df.keys())
-
-'''stratz api headers
-"Authorization": "Bearer {API TOKEN}"
-"Content-Type": "application/json"
-'''
+        note: does not use __buildReq as no key required for opendota
+        ''' 
+        url="{}{}?{}".format(urls.OPEN_DOTA_BASE,urls.GET_PUBLIC_MATCHES,urlencode(kwargs))
+        if (self.logger):
+            self.logger.info('URL built: {}'.format(url))
+        return url
