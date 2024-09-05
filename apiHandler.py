@@ -46,25 +46,29 @@ class ApiHandler(object):
     @retry(
         stop=stop_after_attempt(3), #retry limit
         wait=wait_exponential(multiplier=1,min=4,max=10), #delay before retries
-        retry = retry_if_exception_type(requests.exceptions.ConnectionError, requests.exceptions.Timeout)
+        retry = retry_if_exception_type((requests.exceptions.ConnectionError, requests.exceptions.Timeout))
     )
-    def sendRequest(self,call):
+    def sendRequest(self,call,header=None):
         '''
         Return json response from get request
         Splitting various common errors to allow handling separately (e.g. adding wait time to resend to timeout etc)
         params---
         call: str
+        :header: (dict) headers to be added to call
         returns---
         json data
         '''
 
         try:
-            response  = requests.get(call)            
+            response  = requests.get(call,headers=header)            
             response.raise_for_status()
             if(self.logger):
-                self.logger.info('Request sent:{} Response code {}'.format(call,response.status_code))
-            return response.json()
-        
+                self.logger.info('Request sent:{} Response code: {} Additional headers: {} '.format(call,response.status_code,header))
+            #check if json parsable
+            if('application/json' in response.headers.get('Content-Type','')):
+                return response.json()
+            else:
+                return response.text        
         except requests.exceptions.HTTPError as http_err:
             print('HTTP error: {}'.format(http_err))
         
@@ -82,7 +86,7 @@ class ApiHandler(object):
 
         except requests.exceptions.APIAuthenticationError as auth_err:
             print('API Auth error:{}'.format(auth_err))
-    
+
     def __buildReq(self,call,**kwargs):
         '''constructs API query
         params---
@@ -113,7 +117,12 @@ class ApiHandler(object):
         if(self.logger):
             self.logger.info('URL built: {}'.format(url))
         return url  
-        
+    
+    def fetchHeroesDetailed(self,**kwargs):
+        ''' Replacement for steam call to provide higher detailed data'''
+        url = urls.DOTABUFF_HEROES_DETAILED
+        return url
+
     def fetchMatchHistoryBySeqNum(self,**kwargs):
         ''' 
         Structure API call to fetch match history by sequence number
@@ -131,7 +140,7 @@ class ApiHandler(object):
         return url
 
     def fetchItems(self,**kwargs):
-        '''***ENDPOINT DOWN***
+        '''***ENDPOINT DOWN*** fetch from https://github.com/odota/dotaconstants/blob/master/build/items.json temporarily 
         structure API call to fetch all items (to localize ids)
         params---
         Any acceptable key word args
@@ -139,8 +148,22 @@ class ApiHandler(object):
         returns---
         encoded call:url
         '''
-        return self.__buildReq(urls.GET_GAME_ITEMS,language=self.language,**kwargs)
+        url= "{}{}contents/{}?ref=master".format(urls.GIT_BASE,urls.DOTA2_CONSTANTS_REPO, urls.DOTA2_CONSTANTS_ITEMS)
+        if(self.logger):
+            self.logger.info('URL built: {}'.format(url))
+        return url
+        #return self.__buildReq(urls.GET_GAME_ITEMS,language=self.language,**kwargs) removed while endpoint is down
     
+    def fetchMatchDetails(self,**kwargs):
+        '''Builds steam api call to match details endpoint
+        :params match_id (string)
+        :return encoded url (string)
+        ''' 
+        url = self.__buildReq(urls.GET_MATCH_DETAILS, **kwargs)
+        if(self.logger):
+            self.logger.info('URL built: {}'.format(url))
+        return url 
+
     def fetchPublicMatches(self,**kwargs):
         '''OpenDota public matches call
         kwargs allowed---
